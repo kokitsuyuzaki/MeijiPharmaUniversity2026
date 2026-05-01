@@ -2,15 +2,15 @@
 # 一般化線形モデル（GLM）ハンズオン
 # =============================================================================
 #
-# GLMはfamilyを変えるだけで、線形回帰・ロジスティック回帰・ポアソン回帰を
+# GLMはfamilyを変えるだけで、線形回帰・ポアソン回帰・ロジスティック回帰を
 # 統一的な枠組みで扱える。本資料では以下の3つのデータを用いる:
 #
 #   1. ToothGrowth（線形回帰, family = gaussian）
 #      - ビタミンCの用量・投与法と歯の成長の関係
-#   2. MASS::birthwt（ロジスティック回帰, family = binomial）
-#      - 低出生体重児のリスク因子
-#   3. esoph（ポアソン回帰, family = poisson）
+#   2. esoph（ポアソン回帰, family = poisson）
 #      - 食道癌の症例数とアルコール・タバコ摂取量
+#   3. MASS::birthwt（ロジスティック回帰, family = binomial）
+#      - 低出生体重児のリスク因子
 #
 # いずれも以下の共通パターンで分析する:
 #   データ確認 → glm() → summary() → 可視化
@@ -132,161 +132,7 @@ legend("bottomright", legend=c("OJ（実測）", "VC（実測）",
 ##     → 交互作用項（dose:supp）を入れるとさらに良いモデルになる可能性
 
 # =============================================================================
-# 2. ロジスティック回帰（family = binomial）: birthwt
-# =============================================================================
-#
-# 低出生体重児（2500g未満）のリスク因子を調べたデータ（Baystate Medical Center）
-# - low:   低出生体重児かどうか（0=正常, 1=低体重、応答変数）
-# - age:   母親の年齢
-# - lwt:   最終月経時の母親の体重（ポンド）
-# - smoke: 妊娠中の喫煙（0=なし, 1=あり）
-# - ht:    高血圧の既往（0=なし, 1=あり）
-#
-# 二値の応答変数 → ベルヌーイ分布を仮定 → family = binomial（ロジスティック回帰）
-# リンク関数はロジット: log(p/(1-p)) = β0 + β1*x1 + ...
-# =============================================================================
-
-# データの確認
-data(birthwt)
-str(birthwt)
-head(birthwt)
-
-# 因子型への変換（カテゴリカル変数を明示する）
-birthwt$smoke <- factor(birthwt$smoke, labels=c("非喫煙", "喫煙"))
-birthwt$ht    <- factor(birthwt$ht, labels=c("なし", "あり"))
-
-summary(birthwt[, c("low", "age", "lwt", "smoke", "ht")])
-
-# 生データの可視化
-options(repr.plot.width=10, repr.plot.height=5)
-par(mfrow=c(1,2))
-
-# 喫煙と低出生体重の関係（モザイクプロット）
-mosaicplot(table(birthwt$smoke, birthwt$low),
-    main="喫煙と低出生体重",
-    xlab="喫煙", ylab="低出生体重 (0=正常, 1=低体重)",
-    col=c("lightblue", "salmon"))
-
-# 母親の年齢と低出生体重の関係
-boxplot(age ~ low, data=birthwt,
-    col=c("lightblue", "salmon"),
-    main="母親の年齢と低出生体重",
-    xlab="低出生体重 (0=正常, 1=低体重)", ylab="母親の年齢")
-
-par(mfrow=c(1,1))
-
-## 生データの解釈:
-##   左図（モザイクプロット）: 喫煙群の方が低出生体重の割合がやや高い
-##     → 喫煙が低出生体重のリスク因子である可能性を示唆
-##   右図（箱ひげ図）: 正常群と低体重群で母親の年齢分布に大きな差はない
-##     → 年齢単独では低出生体重を強く予測しない可能性
-
-# モデルの構築
-# binomial: 二項分布（ロジットリンク関数）→ ロジスティック回帰
-fit_binom <- glm(low ~ age + lwt + smoke + ht,
-    family = binomial, data = birthwt)
-
-# 結果の確認
-# summary()の読み方（ロジスティック回帰特有の点）:
-#   Coefficients:
-#     Estimate: ログオッズ比（対数オッズの変化量）
-#       (Intercept): 全説明変数=0（基準カテゴリ）のときの対数オッズ
-#       age:     年齢が1歳上がるごとの対数オッズの変化
-#       lwt:     体重が1ポンド増えるごとの対数オッズの変化
-#       smoke喫煙: 非喫煙に対する喫煙の対数オッズの変化
-#       htあり:  高血圧なしに対するありの対数オッズの変化
-#     z value:  z統計量（正規近似による検定）
-#     Pr(>|z|): p値
-#
-#   解釈のコツ: Estimateをexp()するとオッズ比になる
-#     例: smoke喫煙のEstimate=0.5 → exp(0.5)=1.65
-#         → 喫煙者は非喫煙者に比べてリスクが1.65倍
-summary(fit_binom)
-
-## summary()の結果の解釈:
-##   age:     Estimate=-0.036, p=0.285 → 年齢の効果は有意でない
-##   lwt:     Estimate=-0.017, p=0.010 *
-##     → 体重が重いほどリスクが下がる（負の係数=保護的効果）
-##   smoke喫煙: Estimate=0.679, p=0.041 *
-##     → 喫煙者は低出生体重のリスクが有意に高い
-##   htあり:  Estimate=1.788, p=0.009 **
-##     → 高血圧の既往がある母親はリスクが非常に高い（最も強い効果）
-
-# オッズ比と信頼区間
-# exp(係数) = オッズ比: 1より大→リスク増加、1より小→リスク減少
-# 95%信頼区間に1が含まれなければ有意
-cbind(
-    OddsRatio = exp(coef(fit_binom)),
-    exp(confint(fit_binom))
-)
-
-## オッズ比の解釈:
-##   age:     OR=0.96 [0.90, 1.03] → 1を含む → 有意でない
-##   lwt:     OR=0.98 [0.97, 1.00] → 1をわずかに含まない
-##     → 体重1ポンド増加ごとにリスクが約2%減少（わずかだが有意）
-##   smoke喫煙: OR=1.97 [1.03, 3.80] → 1を含まない
-##     → 喫煙者は非喫煙者の約2.0倍のリスク
-##   htあり:  OR=5.98 [1.62, 25.2] → 1を含まない
-##     → 高血圧がある母親は約6.0倍のリスク（信頼区間が広い=症例が少ない）
-
-# 予測確率の可視化
-# 母親の体重を変化させたときの低出生体重の予測確率
-options(repr.plot.width=10, repr.plot.height=5)
-par(mfrow=c(1,2))
-
-lwt_seq <- seq(min(birthwt$lwt), max(birthwt$lwt), length.out=100)
-
-# 喫煙者 vs 非喫煙者（年齢=平均、高血圧=なし）
-pred_nonsmoker <- predict(fit_binom,
-    newdata=data.frame(age=mean(birthwt$age), lwt=lwt_seq,
-        smoke="非喫煙", ht="なし"),
-    type="response")
-pred_smoker <- predict(fit_binom,
-    newdata=data.frame(age=mean(birthwt$age), lwt=lwt_seq,
-        smoke="喫煙", ht="なし"),
-    type="response")
-
-plot(lwt_seq, pred_nonsmoker, type="l", col="blue", lwd=2, ylim=c(0, 1),
-    main="予測確率: 喫煙の影響",
-    xlab="母親の体重 (lb)", ylab="低出生体重の確率")
-lines(lwt_seq, pred_smoker, col="red", lwd=2)
-abline(h=0.5, lty=2, col="gray")
-legend("topright", legend=c("非喫煙", "喫煙"),
-    col=c("blue", "red"), lwd=2)
-
-# 高血圧あり vs なし（年齢=平均、非喫煙）
-pred_noht <- predict(fit_binom,
-    newdata=data.frame(age=mean(birthwt$age), lwt=lwt_seq,
-        smoke="非喫煙", ht="なし"),
-    type="response")
-pred_ht <- predict(fit_binom,
-    newdata=data.frame(age=mean(birthwt$age), lwt=lwt_seq,
-        smoke="非喫煙", ht="あり"),
-    type="response")
-
-plot(lwt_seq, pred_noht, type="l", col="blue", lwd=2, ylim=c(0, 1),
-    main="予測確率: 高血圧の影響",
-    xlab="母親の体重 (lb)", ylab="低出生体重の確率")
-lines(lwt_seq, pred_ht, col="red", lwd=2)
-abline(h=0.5, lty=2, col="gray")
-legend("topright", legend=c("高血圧なし", "高血圧あり"),
-    col=c("blue", "red"), lwd=2)
-
-par(mfrow=c(1,1))
-
-## 予測確率プロットの解釈:
-##   左図（喫煙の影響）:
-##     - 赤線（喫煙）が青線（非喫煙）より常に上 → 喫煙は一貫してリスクを高める
-##     - 体重が軽い母親ほど予測確率が高い → 体重の保護的効果が見える
-##     - 体重80lb付近では喫煙者の確率が約0.5に達するが、
-##       体重が増えるとともに両群ともリスクが低下する
-##   右図（高血圧の影響）:
-##     - 赤線（高血圧あり）は青線（なし）に比べて大幅に上
-##     - 高血圧の影響は喫煙より大きい（曲線間の距離がより広い）
-##     - 高血圧＋低体重の母親は非常に高いリスクが予測される
-
-# =============================================================================
-# 3. ポアソン回帰（family = poisson）: esoph
+# 2. ポアソン回帰（family = poisson）: esoph
 # =============================================================================
 #
 # フランスのイル=エ=ヴィレーヌ県における食道癌の症例対照研究データ
@@ -445,14 +291,168 @@ par(mfrow=c(1,1))
 ##   注意: ポアソン回帰の予測曲線は対数リンクのため、常に非負かつ指数的
 
 # =============================================================================
+# 3. ロジスティック回帰（family = binomial）: birthwt
+# =============================================================================
+#
+# 低出生体重児（2500g未満）のリスク因子を調べたデータ（Baystate Medical Center）
+# - low:   低出生体重児かどうか（0=正常, 1=低体重、応答変数）
+# - age:   母親の年齢
+# - lwt:   最終月経時の母親の体重（ポンド）
+# - smoke: 妊娠中の喫煙（0=なし, 1=あり）
+# - ht:    高血圧の既往（0=なし, 1=あり）
+#
+# 二値の応答変数 → ベルヌーイ分布を仮定 → family = binomial（ロジスティック回帰）
+# リンク関数はロジット: log(p/(1-p)) = β0 + β1*x1 + ...
+# =============================================================================
+
+# データの確認
+data(birthwt)
+str(birthwt)
+head(birthwt)
+
+# 因子型への変換（カテゴリカル変数を明示する）
+birthwt$smoke <- factor(birthwt$smoke, labels=c("非喫煙", "喫煙"))
+birthwt$ht    <- factor(birthwt$ht, labels=c("なし", "あり"))
+
+summary(birthwt[, c("low", "age", "lwt", "smoke", "ht")])
+
+# 生データの可視化
+options(repr.plot.width=10, repr.plot.height=5)
+par(mfrow=c(1,2))
+
+# 喫煙と低出生体重の関係（モザイクプロット）
+mosaicplot(table(birthwt$smoke, birthwt$low),
+    main="喫煙と低出生体重",
+    xlab="喫煙", ylab="低出生体重 (0=正常, 1=低体重)",
+    col=c("lightblue", "salmon"))
+
+# 母親の年齢と低出生体重の関係
+boxplot(age ~ low, data=birthwt,
+    col=c("lightblue", "salmon"),
+    main="母親の年齢と低出生体重",
+    xlab="低出生体重 (0=正常, 1=低体重)", ylab="母親の年齢")
+
+par(mfrow=c(1,1))
+
+## 生データの解釈:
+##   左図（モザイクプロット）: 喫煙群の方が低出生体重の割合がやや高い
+##     → 喫煙が低出生体重のリスク因子である可能性を示唆
+##   右図（箱ひげ図）: 正常群と低体重群で母親の年齢分布に大きな差はない
+##     → 年齢単独では低出生体重を強く予測しない可能性
+
+# モデルの構築
+# binomial: 二項分布（ロジットリンク関数）→ ロジスティック回帰
+fit_binom <- glm(low ~ age + lwt + smoke + ht,
+    family = binomial, data = birthwt)
+
+# 結果の確認
+# summary()の読み方（ロジスティック回帰特有の点）:
+#   Coefficients:
+#     Estimate: ログオッズ比（対数オッズの変化量）
+#       (Intercept): 全説明変数=0（基準カテゴリ）のときの対数オッズ
+#       age:     年齢が1歳上がるごとの対数オッズの変化
+#       lwt:     体重が1ポンド増えるごとの対数オッズの変化
+#       smoke喫煙: 非喫煙に対する喫煙の対数オッズの変化
+#       htあり:  高血圧なしに対するありの対数オッズの変化
+#     z value:  z統計量（正規近似による検定）
+#     Pr(>|z|): p値
+#
+#   解釈のコツ: Estimateをexp()するとオッズ比になる
+#     例: smoke喫煙のEstimate=0.5 → exp(0.5)=1.65
+#         → 喫煙者は非喫煙者に比べてリスクが1.65倍
+summary(fit_binom)
+
+## summary()の結果の解釈:
+##   age:     Estimate=-0.036, p=0.285 → 年齢の効果は有意でない
+##   lwt:     Estimate=-0.017, p=0.010 *
+##     → 体重が重いほどリスクが下がる（負の係数=保護的効果）
+##   smoke喫煙: Estimate=0.679, p=0.041 *
+##     → 喫煙者は低出生体重のリスクが有意に高い
+##   htあり:  Estimate=1.788, p=0.009 **
+##     → 高血圧の既往がある母親はリスクが非常に高い（最も強い効果）
+
+# オッズ比と信頼区間
+# exp(係数) = オッズ比: 1より大→リスク増加、1より小→リスク減少
+# 95%信頼区間に1が含まれなければ有意
+cbind(
+    OddsRatio = exp(coef(fit_binom)),
+    exp(confint(fit_binom))
+)
+
+## オッズ比の解釈:
+##   age:     OR=0.96 [0.90, 1.03] → 1を含む → 有意でない
+##   lwt:     OR=0.98 [0.97, 1.00] → 1をわずかに含まない
+##     → 体重1ポンド増加ごとにリスクが約2%減少（わずかだが有意）
+##   smoke喫煙: OR=1.97 [1.03, 3.80] → 1を含まない
+##     → 喫煙者は非喫煙者の約2.0倍のリスク
+##   htあり:  OR=5.98 [1.62, 25.2] → 1を含まない
+##     → 高血圧がある母親は約6.0倍のリスク（信頼区間が広い=症例が少ない）
+
+# 予測確率の可視化
+# 母親の体重を変化させたときの低出生体重の予測確率
+options(repr.plot.width=10, repr.plot.height=5)
+par(mfrow=c(1,2))
+
+lwt_seq <- seq(min(birthwt$lwt), max(birthwt$lwt), length.out=100)
+
+# 喫煙者 vs 非喫煙者（年齢=平均、高血圧=なし）
+pred_nonsmoker <- predict(fit_binom,
+    newdata=data.frame(age=mean(birthwt$age), lwt=lwt_seq,
+        smoke="非喫煙", ht="なし"),
+    type="response")
+pred_smoker <- predict(fit_binom,
+    newdata=data.frame(age=mean(birthwt$age), lwt=lwt_seq,
+        smoke="喫煙", ht="なし"),
+    type="response")
+
+plot(lwt_seq, pred_nonsmoker, type="l", col="blue", lwd=2, ylim=c(0, 1),
+    main="予測確率: 喫煙の影響",
+    xlab="母親の体重 (lb)", ylab="低出生体重の確率")
+lines(lwt_seq, pred_smoker, col="red", lwd=2)
+abline(h=0.5, lty=2, col="gray")
+legend("topright", legend=c("非喫煙", "喫煙"),
+    col=c("blue", "red"), lwd=2)
+
+# 高血圧あり vs なし（年齢=平均、非喫煙）
+pred_noht <- predict(fit_binom,
+    newdata=data.frame(age=mean(birthwt$age), lwt=lwt_seq,
+        smoke="非喫煙", ht="なし"),
+    type="response")
+pred_ht <- predict(fit_binom,
+    newdata=data.frame(age=mean(birthwt$age), lwt=lwt_seq,
+        smoke="非喫煙", ht="あり"),
+    type="response")
+
+plot(lwt_seq, pred_noht, type="l", col="blue", lwd=2, ylim=c(0, 1),
+    main="予測確率: 高血圧の影響",
+    xlab="母親の体重 (lb)", ylab="低出生体重の確率")
+lines(lwt_seq, pred_ht, col="red", lwd=2)
+abline(h=0.5, lty=2, col="gray")
+legend("topright", legend=c("高血圧なし", "高血圧あり"),
+    col=c("blue", "red"), lwd=2)
+
+par(mfrow=c(1,1))
+
+## 予測確率プロットの解釈:
+##   左図（喫煙の影響）:
+##     - 赤線（喫煙）が青線（非喫煙）より常に上 → 喫煙は一貫してリスクを高める
+##     - 体重が軽い母親ほど予測確率が高い → 体重の保護的効果が見える
+##     - 体重80lb付近では喫煙者の確率が約0.5に達するが、
+##       体重が増えるとともに両群ともリスクが低下する
+##   右図（高血圧の影響）:
+##     - 赤線（高血圧あり）は青線（なし）に比べて大幅に上
+##     - 高血圧の影響は喫煙より大きい（曲線間の距離がより広い）
+##     - 高血圧＋低体重の母親は非常に高いリスクが予測される
+
+# =============================================================================
 # 3つのモデルの比較まとめ
 # =============================================================================
 #
 # | モデル           | family    | リンク関数 | 応答変数   | 係数の解釈       |
 # |------------------|-----------|------------|------------|------------------|
 # | 線形回帰         | gaussian  | 恒等       | 連続値     | そのまま差分     |
-# | ロジスティック回帰| binomial  | ロジット   | 二値(0/1)  | exp()→オッズ比   |
 # | ポアソン回帰     | poisson   | 対数       | カウント   | exp()→リスク比   |
+# | ロジスティック回帰| binomial  | ロジット   | 二値(0/1)  | exp()→オッズ比   |
 #
 # 共通点:
 #   - glm() の family を変えるだけで、同じ枠組みで異なる種類のデータを扱える
